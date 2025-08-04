@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Barcode Scanner</title>
+    <link rel="icon" href="angry_eagle.png" type="image/png">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background-color: blue;
+            position: relative;
+            margin: 0;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 20px auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        #angry-eagle {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            width: 100px;
+            height: auto;
+            opacity: 0.8;
+        }
+
+        /* Password modal styles */
+        #password-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        #password-box {
+            background-color: white;
+            padding: 30px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        #password-input {
+            padding: 10px;
+            font-size: 16px;
+            margin-top: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+
+        #password-button {
+            padding: 10px 20px;
+            font-size: 16px;
+            margin-top: 10px;
+            background-color: #007BFF;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        #password-button:hover {
+            background-color: #0056b3;
+        }
+
+        /* Tab styles */
+        .tab-buttons {
+            display: flex;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #ccc;
+        }
+
+        .tab-button {
+            background-color: #f1f1f1;
+            border: none;
+            outline: none;
+            cursor: pointer;
+            padding: 14px 16px;
+            transition: 0.3s;
+            font-size: 17px;
+            border-radius: 5px 5px 0 0;
+            border: 1px solid #ccc;
+            border-bottom: none;
+        }
+
+        .tab-button:hover {
+            background-color: #ddd;
+        }
+
+        .tab-button.active {
+            background-color: #fff;
+            border-bottom: 2px solid #fff;
+        }
+
+        .tab-content {
+            padding: 20px 0;
+            border-top: none;
+        }
+        
+        .hidden {
+            display: none;
+        }
+
+        /* Existing styles from previous versions */
+        #association-form-container,
+        #scan-controls {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            background-color: #f9f9f9;
+        }
+
+        #association-form-container label,
+        #association-form-container input,
+        #association-form-container button,
+        #scan-controls label,
+        #scan-controls select {
+            display: block;
+            margin-bottom: 10px;
+        }
+
+        #association-form-container input,
+        #scan-controls select,
+        #scan-controls input[type="password"] {
+            width: 95%;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+        }
+
+        #association-form-container button,
+        .export-button {
+            padding: 10px 15px;
+            background-color: #007BFF;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+
+        #association-form-container button:hover,
+        .export-button:hover {
+            background-color: #0056b3;
+        }
+
+        #scan-log {
+            padding: 20px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            background-color: #f9f9f9;
+        }
+
+        #scan-log ul {
+            list-style-type: none;
+            padding: 0;
+        }
+
+        #scan-log ul li {
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            margin-bottom: 10px;
+            background-color: #fff;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        #scan-log ul li:last-child {
+            margin-bottom: 0;
+        }
+
+        .log-timestamp {
+            font-size: 0.9em;
+            color: #777;
+        }
+
+        .log-info {
+            font-size: 1.1em;
+            font-weight: bold;
+        }
+
+        #clear-log-button {
+            margin-top: 10px;
+            padding: 8px 12px;
+            background-color: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+
+        #clear-log-button:hover {
+            background-color: #c82333;
+        }
+
+        /* New table styles for current status view */
+        #current-status-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        #current-status-table th,
+        #current-status-table td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+
+        #current-status-table th {
+            background-color: #f2f2f2;
+        }
+
+        .status-button-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="password-overlay">
+        <div id="password-box">
+            <h2>Enter Password</h2>
+            <input type="password" id="password-input" placeholder="Password">
+            <button id="password-button">Enter</button>
+            <p id="password-message" style="color: red;"></p>
+        </div>
+    </div>
+
+    <div class="container hidden" id="main-content">
+        <h1>Barcode Scanner and Log</h1>
+
+        <div class="tab-buttons">
+            <button class="tab-button active" data-tab="scan-tab">Scan Barcode</button>
+            <button class="tab-button" data-tab="associations-tab">Manage Barcodes</button>
+            <button class="tab-button" data-tab="status-tab">Current Status</button>
+            <button class="tab-button" data-tab="log-tab">View Log</button>
+        </div>
+
+        <div id="scan-tab" class="tab-content">
+            <div id="scan-controls">
+                <h2>Scan a Barcode</h2>
+                <p>Scan a barcode or enter it below to log the event.</p>
+                <input type="password" id="manual-barcode-input" placeholder="Enter or scan barcode here">
+                <button id="manual-log-button" class="export-button">Log Barcode</button>
+                <hr>
+                <label for="checking-status">Checking:</label>
+                <select id="checking-status">
+                    <option value="In">In</option>
+                    <option value="Out">Out</option>
+                    <option value="Crew Rest">Crew Rest</option>
+                </select>
+            </div>
+        </div>
+
+        <div id="associations-tab" class="tab-content hidden">
+            <div id="association-form-container">
+                <h2>Manage Barcode Associations</h2>
+                <p>Enter a barcode to add or edit its associated name and phase.</p>
+                <form id="barcode-association-form">
+                    <label for="barcode-to-name-input">Barcode Number:</label>
+                    <input type="text" id="barcode-to-name-input" placeholder="Enter or scan barcode" required onchange="populateAssociation()">
+
+                    <label for="person-name-input">Person's Name:</label>
+                    <input type="text" id="person-name-input" placeholder="e.g., Jane Doe" required>
+                    
+                    <label for="room-number-input">Room Number:</label>
+                    <input type="text" id="room-number-input" placeholder="e.g., A-101">
+
+                    <label for="phase-input">Phase:</label>
+                    <select id="phase-input" required>
+                        <option value="1">1</option>
+                        <option value="2">2</option>
+                        <option value="3">3</option>
+                    </select>
+
+                    <button type="submit">Save Association</button>
+                </form>
+                <p id="association-message"></p>
+            </div>
+        </div>
+        
+        <div id="status-tab" class="tab-content hidden">
+            <h2>Current Status</h2>
+            <div class="status-button-group">
+                <button id="show-all-button" class="export-button">Show All</button>
+                <button id="show-checked-out-button" class="export-button">Show Checked Out</button>
+            </div>
+            <div id="current-status-display"></div>
+            <button id="export-status-button" class="export-button">Export Current Status to CSV</button>
+        </div>
+
+        <div id="log-tab" class="tab-content hidden">
+            <div id="scan-log">
+                <h2>Scan Log</h2>
+                <ul id="scan-results">
+                </ul>
+                <button id="export-log-button" class="export-button">Export Scan Log to CSV</button>
+                <button id="clear-log-button">Clear Scan Log</button>
+            </div>
+        </div>
+    </div>
+
+    <img id="angry-eagle" src="angry_eagle.png" alt="Angry Eagle">
+
+    <script src="script.js"></script>
+
+</body>
+
+</html>
