@@ -1,353 +1,228 @@
-// Password logic
-const passwordInput = document.getElementById('password-input');
-const passwordButton = document.getElementById('password-button');
-const passwordOverlay = document.getElementById('password-overlay');
-const mainContent = document.getElementById('main-content');
-const passwordMessage = document.getElementById('password-message');
-const correctPassword = '97TRS';
+// script.js
 
-function checkPassword() {
-    if (passwordInput.value === correctPassword) {
-        passwordOverlay.style.display = 'none';
-        mainContent.classList.remove('hidden');
-        manualBarcodeInput.focus(); // Focus on the barcode input after logging in
-    } else {
-        passwordMessage.textContent = 'Incorrect password. Please try again.';
-        passwordInput.value = '';
-    }
-}
+const publicVapidKey = 'YOUR_PUBLIC_VAPID_KEY'; // REPLACE THIS WITH YOUR ACTUAL PUBLIC VAPID KEY
 
-passwordButton.addEventListener('click', checkPassword);
-passwordInput.addEventListener('keypress', (event) => {
-    if (event.key === 'Enter') {
-        checkPassword();
-    }
-});
+// Objects to store our data in memory
+let barcodeAssociations = {};
+let scanLog = [];
 
-
-// References to DOM elements
-const tabButtons = document.querySelectorAll('.tab-button');
-const tabContents = document.querySelectorAll('.tab-content');
-
+// DOM elements
 const barcodeAssociationForm = document.getElementById('barcode-association-form');
-const barcodeToNameInput = document.getElementById('barcode-to-name-input');
-const personNameInput = document.getElementById('person-name-input');
-const roomNumberInput = document.getElementById('room-number-input'); // New reference
-const phaseInput = document.getElementById('phase-input');
-const associationMessageElement = document.getElementById('association-message');
-const checkingStatusSelect = document.getElementById('checking-status');
+const barcodeInput = document.getElementById('barcode-input');
+const nameInput = document.getElementById('name-input');
+const statusInput = document.getElementById('status-input');
+const messageElement = document.getElementById('message');
+const quickScanInput = document.getElementById('quick-scan-input');
+const scanResultDisplay = document.getElementById('last-scanned-value');
 const scanResultsList = document.getElementById('scan-results');
-const exportLogButton = document.getElementById('export-log-button');
 const clearLogButton = document.getElementById('clear-log-button');
-const currentStatusDisplay = document.getElementById('current-status-display');
-const exportStatusButton = document.getElementById('export-status-button');
-const showAllButton = document.getElementById('show-all-button');
-const showCheckedOutButton = document.getElementById('show-checked-out-button');
-const manualBarcodeInput = document.getElementById('manual-barcode-input');
-const manualLogButton = document.getElementById('manual-log-button');
+const exportAssociationsButton = document.getElementById('export-associations-button');
+const exportLogButton = document.getElementById('export-log-button');
+const enablePushButton = document.getElementById('enable-push-button');
+const notificationMessage = document.getElementById('notification-message');
 
-// A database to store barcode associations (using local storage)
-const barcodeAssociations = JSON.parse(localStorage.getItem('barcodeAssociations')) || {};
-// A database to store the current in/out status for each barcode
-const currentStatus = JSON.parse(localStorage.getItem('currentStatus')) || {};
+// --- Core Data Management Functions ---
 
-// An array to store the scan log, now loaded from local storage
-const scanLog = JSON.parse(localStorage.getItem('scanLog')) || [];
-
-/**
- * Handles tab switching by showing and hiding content.
- * @param {Event} event The click event from a tab button.
- */
-function switchTab(event) {
-    const selectedTabId = event.target.dataset.tab;
-
-    // Deactivate all tab buttons and hide all content
-    tabButtons.forEach(button => button.classList.remove('active'));
-    tabContents.forEach(content => content.classList.add('hidden'));
-
-    // Activate the clicked button and show its corresponding content
-    event.target.classList.add('active');
-    const selectedTab = document.getElementById(selectedTabId);
-    selectedTab.classList.remove('hidden');
-
-    // If the status tab is active, populate it with current data
-    if (selectedTabId === 'status-tab') {
-        populateStatusTab('all');
+function loadData() {
+    const storedAssociations = localStorage.getItem('barcodeData');
+    if (storedAssociations) {
+        barcodeAssociations = JSON.parse(storedAssociations);
     }
-
-    // Automatically focus the barcode input when switching to the scan tab
-    if (selectedTabId === 'scan-tab') {
-        manualBarcodeInput.focus();
+    
+    const storedLog = localStorage.getItem('scanLogData');
+    if (storedLog) {
+        scanLog = JSON.parse(storedLog);
+        renderScanLog();
     }
 }
 
-/**
- * Populates the name and phase fields if an association for the barcode already exists.
- */
-function populateAssociation() {
-    const barcode = barcodeToNameInput.value.trim();
-    if (barcodeAssociations.hasOwnProperty(barcode)) {
-        const { name, room, phase } = barcodeAssociations[barcode];
-        personNameInput.value = name;
-        roomNumberInput.value = room;
-        phaseInput.value = phase;
-    } else {
-        personNameInput.value = '';
-        roomNumberInput.value = '';
-        phaseInput.value = '1'; // Reset to default if no association exists
+function saveAssociations() {
+    localStorage.setItem('barcodeData', JSON.stringify(barcodeAssociations));
+    sendDataToBackend(); // IMPORTANT: Send data to the server on every save
+}
+
+function saveScanLog() {
+    localStorage.setItem('scanLogData', JSON.stringify(scanLog));
+    sendDataToBackend(); // IMPORTANT: Send data to the server on every save
+}
+
+// NEW: Function to send data to the backend
+async function sendDataToBackend() {
+    try {
+        await fetch('http://localhost:3000/api/update-data', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ barcodeAssociations, scanLog })
+        });
+        console.log('Data successfully sent to backend.');
+    } catch (error) {
+        console.error('Failed to send data to backend:', error);
     }
 }
 
-/**
- * Handles form submission to add or update a barcode association.
- * @param {Event} event The form submission event.
- */
-function handleAssociationFormSubmit(event) {
+function renderScanLog() {
+    scanResultsList.innerHTML = '';
+    scanLog.forEach(logEntry => {
+        const listItem = document.createElement('li');
+        listItem.innerHTML = `
+            <strong>Timestamp:</strong> ${logEntry.timestamp} <br>
+            <strong>Scanned Barcode:</strong> ${logEntry.barcode} <br>
+            <strong>Associated Name:</strong> ${logEntry.name} <br>
+            <strong>Status:</strong> ${logEntry.status}
+        `;
+        scanResultsList.appendChild(listItem);
+    });
+}
+
+// --- Event Listeners and Core Logic ---
+
+// Handle adding new barcode associations
+barcodeAssociationForm.addEventListener('submit', (event) => {
     event.preventDefault();
 
-    const barcode = barcodeToNameInput.value.trim();
-    const name = personNameInput.value.trim();
-    const room = roomNumberInput.value.trim();
-    const phase = phaseInput.value;
+    const barcode = barcodeInput.value.trim();
+    const name = nameInput.value.trim();
+    const status = statusInput.value.trim();
 
-    if (barcode && name && phase) {
-        barcodeAssociations[barcode] = { name, room, phase };
-        localStorage.setItem('barcodeAssociations', JSON.stringify(barcodeAssociations));
-        showAssociationMessage(`Association saved for ${name}, Phase ${phase}.`, 'success');
-        barcodeToNameInput.value = '';
-        personNameInput.value = '';
-        roomNumberInput.value = '';
-        phaseInput.value = '1';
-
-        // Automatically log the new association as "In"
-        logScanResult(barcode, 'In');
-
+    if (barcode && name && status) {
+        barcodeAssociations[barcode] = { name: name, status: status };
+        saveAssociations();
+        messageElement.textContent = `Successfully associated barcode "${barcode}" with name "${name}" and status "${status}".`;
+        messageElement.style.color = 'green';
+        barcodeInput.value = '';
+        nameInput.value = '';
+        statusInput.value = '';
     } else {
-        showAssociationMessage('Please enter a barcode, name, and phase.', 'error');
-    }
-}
-
-/**
- * Displays a temporary message for the association form.
- * @param {string} text The message to display.
- * @param {string} type The type of message ('success' or 'error').
- */
-function showAssociationMessage(text, type) {
-    associationMessageElement.textContent = text;
-    associationMessageElement.style.color = type === 'error' ? 'red' : 'green';
-    setTimeout(() => {
-        associationMessageElement.textContent = '';
-    }, 3000);
-}
-
-/**
- * Logs the scanned barcode and the selected status. The displayed log is now much cleaner.
- * @param {string} barcode The scanned barcode number.
- * @param {string} status The status to be logged (e.g., 'In' or 'Out').
- */
-function logScanResult(barcode, status) {
-    const association = barcodeAssociations[barcode] || { name: 'Unknown', room: 'N/A', phase: 'N/A' };
-    const timestamp = new Date().toLocaleString();
-    const message = `${association.name} checked ${status}.`;
-
-    // Update the current status database and save to local storage
-    currentStatus[barcode] = {
-        name: association.name,
-        room: association.room,
-        phase: association.phase,
-        status: status,
-        timestamp: timestamp
-    };
-    localStorage.setItem('currentStatus', JSON.stringify(currentStatus));
-
-    // Add the scan result to the log array
-    const newLogEntry = { barcode, name: association.name, room: association.room, phase: association.phase, status, timestamp };
-    scanLog.push(newLogEntry);
-    localStorage.setItem('scanLog', JSON.stringify(scanLog)); // Save the updated log
-
-    // Create and append a new list item to the UI
-    const listItem = document.createElement('li');
-    listItem.innerHTML = `<span class="log-timestamp">${timestamp}</span><span class="log-info">${message}</span>`;
-    scanResultsList.prepend(listItem);
-}
-
-/**
- * Populates the "Current Status" tab with a list of all associations, optionally filtered.
- * @param {string} filter 'all' or 'out'
- */
-function populateStatusTab(filter = 'all') {
-    currentStatusDisplay.innerHTML = ''; // Clear previous content
-
-    if (Object.keys(barcodeAssociations).length === 0) {
-        currentStatusDisplay.textContent = 'No barcode associations saved yet.';
-        return;
-    }
-
-    const table = document.createElement('table');
-    table.id = 'current-status-table';
-    const headerRow = table.insertRow();
-    ['Name', 'Room', 'Phase', 'Status'].forEach(headerText => {
-        const header = document.createElement('th');
-        header.textContent = headerText;
-        headerRow.appendChild(header);
-    });
-
-    for (const barcode in barcodeAssociations) {
-        const { name, room, phase } = barcodeAssociations[barcode];
-        const statusData = currentStatus[barcode] || { status: 'Out' }; // Default to 'Out' if no log entry exists
-
-        if (filter === 'all' || statusData.status === 'Out') {
-            const row = table.insertRow();
-            row.insertCell().textContent = name;
-            row.insertCell().textContent = room;
-            row.insertCell().textContent = phase;
-            row.insertCell().textContent = statusData.status;
-        }
-    }
-
-    currentStatusDisplay.appendChild(table);
-}
-
-/**
- * Displays the saved log entries from local storage when the page loads, hiding barcodes.
- */
-function displaySavedLog() {
-    scanResultsList.innerHTML = '';
-    // Reverse the log to display newest first
-    for (const entry of scanLog.slice().reverse()) {
-        const message = `${entry.name} checked ${entry.status}.`;
-        const listItem = document.createElement('li');
-        listItem.innerHTML = `<span class="log-timestamp">${entry.timestamp}</span><span class="log-info">${message}</span>`;
-        scanResultsList.appendChild(listItem);
-    }
-}
-
-/**
- * Exports the current status data to a CSV file. Barcodes are still included in the export.
- */
-function exportStatusToCsv() {
-    if (Object.keys(barcodeAssociations).length === 0) {
-        alert('No data to export!');
-        return;
-    }
-
-    const headers = ['barcode', 'name', 'room', 'phase', 'status'];
-    const csvRows = [];
-    csvRows.push(headers.join(',')); // Add headers
-
-    for (const barcode in barcodeAssociations) {
-        const { name, room, phase } = barcodeAssociations[barcode];
-        const statusData = currentStatus[barcode] || { status: 'Out' };
-
-        const values = [
-            barcode,
-            name,
-            room,
-            phase,
-            statusData.status
-        ];
-
-        const sanitizedValues = values.map(value => {
-            let val = String(value).replace(/"/g, '""');
-            if (val.includes(',') || val.includes('"') || val.includes('\n')) {
-                val = `"${val}"`;
-            }
-            return val;
-        });
-
-        csvRows.push(sanitizedValues.join(','));
-    }
-
-    const csvString = csvRows.join('\n');
-    const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = 'current_status.csv';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-}
-
-/**
- * Exports the scan log data to a CSV file. Barcodes are still included in the export.
- */
-function exportLogToCsv() {
-    if (scanLog.length === 0) {
-        alert('No data to export!');
-        return;
-    }
-
-    const headers = ['barcode', 'name', 'room', 'phase', 'status', 'timestamp'];
-    const csvRows = [];
-    csvRows.push(headers.join(',')); // Add headers
-
-    // Map data to CSV rows
-    for (const row of scanLog) {
-        const values = headers.map(header => {
-            let value = row[header] || '';
-            // Sanitize the value for CSV
-            value = String(value).replace(/"/g, '""');
-            if (value.includes(',') || value.includes('"') || value.includes('\n')) {
-                value = `"${value}"`;
-            }
-            return value;
-        });
-        csvRows.push(values.join(','));
-    }
-
-    const csvString = csvRows.join('\n');
-    const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = 'scan_log.csv';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-}
-
-/**
- * Clears the scan log from the UI and the data array.
- */
-function clearScanLog() {
-    scanLog.length = 0;
-    scanResultsList.innerHTML = '';
-    localStorage.removeItem('scanLog');
-}
-
-/**
- * Handles the manual log button click and the scanner's 'Enter' keypress.
- */
-function handleManualLog() {
-    const manualBarcode = manualBarcodeInput.value.trim();
-    if (manualBarcode) {
-        const selectedStatus = checkingStatusSelect.value;
-        logScanResult(manualBarcode, selectedStatus);
-        manualBarcodeInput.value = ''; // Clear the input field after logging
-    }
-}
-
-// Initial call to display any saved log entries on page load
-displaySavedLog();
-
-// Event Listeners
-tabButtons.forEach(button => button.addEventListener('click', switchTab));
-barcodeAssociationForm.addEventListener('submit', handleAssociationFormSubmit);
-exportLogButton.addEventListener('click', exportLogToCsv);
-exportStatusButton.addEventListener('click', exportStatusToCsv);
-clearLogButton.addEventListener('click', clearScanLog);
-showAllButton.addEventListener('click', () => populateStatusTab('all'));
-showCheckedOutButton.addEventListener('click', () => populateStatusTab('out'));
-manualLogButton.addEventListener('click', handleManualLog);
-
-// Event listener to trigger log on 'Enter' keypress in the manual input field
-manualBarcodeInput.addEventListener('keypress', (event) => {
-    if (event.key === 'Enter') {
-        handleManualLog();
-        event.preventDefault(); // Prevent default form submission behavior
+        messageElement.textContent = 'Please fill in all fields.';
+        messageElement.style.color = 'red';
     }
 });
 
-// New event listener to refocus the barcode input after the status is changed
-checkingStatusSelect.addEventListener('change', () => {
-    manualBarcodeInput.focus();
+// Handle the dedicated quick scan input field
+quickScanInput.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+        event.preventDefault();
+        const barcode = quickScanInput.value.trim();
+        if (barcode.length > 0) {
+            processScannedBarcode(barcode);
+        }
+        quickScanInput.value = '';
+    }
+});
+
+function processScannedBarcode(barcode) {
+    const timestamp = new Date().toLocaleString();
+    
+    // Retrieve the associated data using the new structure
+    const associatedData = barcodeAssociations[barcode] || { name: 'Unknown', status: 'N/A' };
+    const logEntry = {
+        timestamp: timestamp,
+        barcode: barcode,
+        name: associatedData.name,
+        status: associatedData.status
+    };
+
+    scanResultDisplay.innerHTML = `
+        <strong>Scanned:</strong> ${barcode} <br>
+        <strong>Name:</strong> ${associatedData.name} <br>
+        <strong>Status:</strong> ${associatedData.status} <br>
+        <strong>Timestamp:</strong> ${timestamp}
+    `;
+
+    scanLog.unshift(logEntry);
+    
+    if (scanLog.length > 500) {
+        scanLog.pop();
+    }
+    
+    saveScanLog();
+    renderScanLog();
+}
+
+// --- Push Notification Logic (same as before) ---
+async function subscribeUserToPush() {
+    if ('serviceWorker' in navigator && 'PushManager' in window) {
+        const swRegistration = await navigator.serviceWorker.register('/service-worker.js');
+        const permission = await Notification.requestPermission();
+        if (permission !== 'granted') {
+            throw new Error('Permission not granted for Notification');
+        }
+
+        const pushSubscription = await swRegistration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: urlBase64ToUint8Array(publicVapidKey),
+        });
+
+        await fetch('http://localhost:3000/api/subscribe-push', {
+            method: 'POST',
+            body: JSON.stringify(pushSubscription),
+            headers: { 'content-type': 'application/json' },
+        });
+
+        notificationMessage.textContent = 'Successfully subscribed to push notifications!';
+        notificationMessage.style.color = 'green';
+    } else {
+        notificationMessage.textContent = 'Push notifications are not supported by this browser.';
+        notificationMessage.style.color = 'red';
+    }
+}
+
+// Utility function to convert VAPID key
+function urlBase64ToUint8Array(base64String) {
+    const padding = '='.repeat((4 - base64String.length % 4) % 4);
+    const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
+    const rawData = window.atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+    for (let i = 0; i < rawData.length; ++i) {
+        outputArray[i] = rawData.charCodeAt(i);
+    }
+    return outputArray;
+}
+
+// Event listener for the push notification button
+enablePushButton.addEventListener('click', () => {
+    subscribeUserToPush().catch(error => {
+        notificationMessage.textContent = `Error subscribing: ${error.message}`;
+        notificationMessage.style.color = 'red';
+        console.error('Error during push subscription:', error);
+    });
+});
+
+// Handle "Clear Scan Log" button click
+clearLogButton.addEventListener('click', () => {
+    if (confirm('Are you sure you want to clear the entire scan log? This action cannot be undone.')) {
+        scanLog = [];
+        saveScanLog();
+        renderScanLog();
+        alert('Scan log has been cleared.');
+    }
+});
+
+// Handle "Export Associations" button click
+exportAssociationsButton.addEventListener('click', () => {
+    let csvData = "Barcode,Name,Status\n";
+    for (const barcode in barcodeAssociations) {
+        if (Object.hasOwnProperty.call(barcodeAssociations, barcode)) {
+            const { name, status } = barcodeAssociations[barcode];
+            csvData += `${escapeForCsv(barcode)},${escapeForCsv(name)},${escapeForCsv(status)}\n`;
+        }
+    }
+    exportToCsv('barcode-associations.csv', csvData);
+});
+
+// Handle "Export Scan Log" button click
+exportLogButton.addEventListener('click', () => {
+    let csvData = "Timestamp,Barcode,Name,Status\n";
+    scanLog.forEach(entry => {
+        csvData += `${escapeForCsv(entry.timestamp)},${escapeForCsv(entry.barcode)},${escapeForCsv(entry.name)},${escapeForCsv(entry.status)}\n`;
+    });
+    exportToCsv('barcode-scan-log.csv', csvData);
+});
+
+// Initial data load and autofocus on the quick scan input
+document.addEventListener('DOMContentLoaded', () => {
+    loadData();
+    quickScanInput.focus();
 });
